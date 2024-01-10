@@ -1,0 +1,153 @@
+:showtitle:
+:toc: left
+:numbered:
+:icons: font
+:state: predraft
+:revremark: State: {state}
+:authors: Andy Fiddaman <illumos@fiddaman.net>; Keith Wesolowski <wesolows@oxide.computer>
+:sponsor:
+:source-highlighter: highlight.js
+ifdef::env-github[]
+:tip-caption: :bulb:
+:note-caption: :information_source:
+:important-caption: :heavy_exclamation_mark:
+:caution-caption: :fire:
+:warning-caption: :warning:
+endif::[]
+
+= IPD 44 Distribution as a first class concept
+{authors}
+
+[cols="3"]
+|===
+|Authors: {authors}
+|Sponsor: {sponsor}
+|State: {state}
+|===
+
+== Introduction
+
+At Oxide, we recently added support for
+https://www.illumos.org/books/dtrace/chp-anon.html#chp-anon[Anonymous DTrace]
+on Oxide server sleds. This required some work as these systems boot with
+a ramdisk-backed root filesystem which is discarded on reboot and replaced
+with a fresh copy each time. Some mechanism to preserve and inject the files
+necessary to enable Anonymous DTrace during system boot was necessary. For
+some, this is the
+https://wesolows.dtrace.org/2013/12/28/anonymous-tracing-on-smartos/[second time they've arrived here] -
+SmartOS also uses a ramdisk root and needs some additional steps to enable
+Anonymous DTrace.
+
+The Oxide implementation adds a
+https://github.com/oxidecomputer/illumos-gate/commit/80cbd83785413166fcdd30080245ba7ca3b3b97e[dtrace helper]
+that is invoked automatically after a `dtrace -A` command prepares the files
+and does whatever is necessary to make those available during the next boot.
+This is a generic mechanism that could also be used on SmartOS, but it begs the
+obvious question on how the helper should be selected.
+
+Today an instance of illumos is characterised by ISA (`amd64`, `aarch64`), by
+machine or platform type (`i86pc`, `oxide`, `armpc`), and by implementation
+(`SUNW,Ultra-Enterprise`, `Oxide,Gimlet`, `i86pc`). Implementations exist that
+don't have implementation-specific kernels, too. None of these provide what is
+really needed here to select the appropriate dtrace helper -- a SmartOS system,
+for example, uses the `i86pc` platform type.
+
+This IPD proposes the introduction of a new `Distribution` concept that could
+be used for this purpose, but has wider application.
+
+== Distribution names
+
+A distribution name consists of a lower-case ASCII string consisting solely of
+the characters in `0–9`, `a–z`, `.`, `_` and `-`. The maximum length of a
+distribution name is 63 characters.
+
+== Identifying the running distribution
+
+The distribution that is running on a particular illumos instance will be
+identified by the contents of a file in `/etc`. If the distribution cannot
+be determined, then the distribution name will be set to `default`.
+
+NOTE: Just one of the following options should be chosen before this IPD is
+published.
+
+=== /etc/os-release
+
+A number of distributions provide an
+https://www.man7.org/linux/man-pages/man5/os-release.5.html[`/etc/os-release`]
+file which includes an `ID` field which could be used for this purpose.
+[source,console]
+----
+$ grep '^ID=' /etc/os-release
+ID=omnios
+----
+This file is shell-compatible in that it can be sourced from Bourne shell
+scripts, and has the same character set restrictions as proposed above
+(although no inherent length limit). The ID can also be extracted via the
+existing `def*()` routines in libc, although a new library call for retrieving
+this is proposed below.
+
+=== /etc/dist
+
+Alternatively, a new `/etc/dist` file could be created containing just the name
+of the distribution.
+
+== Filesystem layout
+
+Distribution-specific files will be delivered into `/dist` or `/usr/dist`, as
+a peer to `/platform`.
+
+As a concrete example for the dtrace helper, Oxide's Helios distribution
+would provide `/usr/dist/helios/bin/dtrace-anon-helper` and SmartOS would
+provide `/usr/dist/smartos/bin/dtrace-anon-helper`, while illumos-gate
+would provide `/usr/dist/default/bin/dtrace-anon-helper` as a symlink to
+`/bin/true`. Distributions that do not want to override this helper would
+just symlink to the corresponding file in `/usr/dist/default`.
+
+The combined filesystem layout here would look something like this, although
+only the default and distribution-specific trees would generally be present on
+any particular system.
+
+----
+usr/dist/
+    default/
+        bin/
+	    dtrace-anon-helper -> /bin/true
+    openindiana/
+        bin/
+	    dtrace-anon-helper -> ../../../default/bin/dtrace-anon-helper
+    helios/
+        bin/
+	    dtrace-anon-helper
+----
+
+== Definitions and Library Functions
+
+To aid the use of distribution-specific files, the following definitions and
+library functions will be introduced.
+
+=== MAXDISTNAMELEN
+
+[source,c]
+----
+#define MAXDISTNAMELEN 63
+----
+
+=== distname(3dist)
+
+[source,c]
+----
+extern int distname(char *buf, size_t buflen);
+----
+
+Populate `buf` with the running distribution name, NUL-terminated.
+
+=== distexpand(3dist)
+
+[source,c]
+----
+extern int distexpand(const char *template, char *buf, size_t buflen);
+----
+
+Expand `template` into `buf`, replacing instances of `$DIST` with the
+running distribution name.
+
