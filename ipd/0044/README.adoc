@@ -129,8 +129,12 @@ library functions will be introduced.
 
 [source,c]
 ----
-#define MAXDISTNAMELEN 63
+#define MAXDISTNAMELEN 64
 ----
+
+Consistent with other maximum string lengths defined by standards and history,
+such as `MAXPATHLEN`, `MAXNAMELEN`, and `PATH_MAX`, this value includes the
+terminating nul byte.
 
 === distname(3dist)
 
