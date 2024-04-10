@@ -67,9 +67,6 @@ The distribution that is running on a particular illumos instance will be
 identified by the contents of a file in `/etc`. If the distribution cannot
 be determined, then the distribution name will be set to `default`.
 
-NOTE: Just one of the following options should be chosen before this IPD is
-published.
-
 === /etc/os-release
 
 A number of distributions provide an
@@ -85,11 +82,6 @@ scripts, and has the same character set restrictions as proposed above
 (although no inherent length limit). The ID can also be extracted via the
 existing `def*()` routines in libc, although a new library call for retrieving
 this is proposed below.
-
-=== /etc/dist
-
-Alternatively, a new `/etc/dist` file could be created containing just the name
-of the distribution.
 
 == Filesystem layout
 
@@ -286,18 +278,6 @@ extern int distname(char *buf, size_t buflen);
 
 Populate `buf` with the running distribution name, NUL-terminated.
 
-=== distexpand(3dist)
-
-As discussed in <<s-semantics>> above, this function could be omitted.
-
-[source,c]
-----
-extern int distexpand(const char *template, char *buf, size_t buflen);
-----
-
-Expand `template` into `buf`, replacing instances of `$DIST` with the
-running distribution name.
-
 === distfile_open(3dist)
 
 [source,c]
@@ -337,3 +317,4 @@ Callers wishing to execute the distribution-specific file should set `O_EXEC`
 in `oflag` and pass the resulting file descriptor to `fexecve`.  Callers
 should not fall back to a distribution-independent `default` file if reading
 or executing from the file descriptor subsequently results in an error.
+
